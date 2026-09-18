@@ -235,15 +235,16 @@ void launch_q5(const Tensor& x, const Weight& weight, Tensor& gate, Tensor& valu
         return;
     }
     if (x.ne[1] <= 9) {
-        // T=7..9 move to the split4 shape, which the fused band already uses up to 6. The row-block
-        // shape was routed here against the row-split SIMT; split4 was not in that comparison, and it
-        // is faster at these counts. Complete public op, both builds alternating inside one window,
-        // three rounds, cold L2, 5 warmup / 50 samples: -19.0% / -14.7% / -5.5% at T=7/8/9, while T=10
-        // and T=12 are unchanged.
+        // One warp owns one output row and four warps split K, with the column count as a compile-time
+        // template argument, so the kernel covers exactly the live columns. The fused projections use
+        // the same shape up to 6, so the Q5 parent has one mechanism from 2 to 9.
         launch_q5_split4_exact(x, weight, gate, value, stream);
         return;
     }
     if (x.ne[1] <= 12) {
+        // The c4 narrow-column SIMT tile, which stages the activation slab in shared memory and lets
+        // eight warps read it. Above 9 columns it beats the split4 shape on this parent. The band end
+        // is the measured crossover, not a shape limit: both shapes are legal at 10..12.
         launch_q5_simt<4>(x, weight, gate, value, stream);
         return;
     }

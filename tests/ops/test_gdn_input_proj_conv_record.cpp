@@ -293,6 +293,12 @@ int run_q4_q5() {
     }
     failures += run(5, 3, {5, 3, 1}, 1491U);
     failures += run(4, 4, {4, 3, 2, 1}, 1492U);
+    // R7-review trial: the batched organisation whose aggregate column count is 8, which is inside the
+    // range the fused template covers when the request is read from the flattened token axis. The dense
+    // case checks the history reload at the request boundary, and the masked one additionally puts an
+    // invalid tail in the second request, so the boundary is checked next to a zeroed column.
+    failures += run(4, 2, {}, 1493U);
+    failures += run(4, 2, {4, 2}, 1494U);
     failures += qk.verify_preserved("Q4 record qk weight");
     failures += value_z.verify_preserved("Q5 record value/z weight");
     return failures;

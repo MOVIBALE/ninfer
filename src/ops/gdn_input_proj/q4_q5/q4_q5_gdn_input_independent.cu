@@ -204,8 +204,11 @@ void launch_q5_split4_exact(const Tensor& x, const Weight& weight, Tensor& value
     case 9:
         launch_q5_split4<9>(x, weight, value, z, stream);
         return;
+    case 10:
+        launch_q5_split4<10>(x, weight, value, z, stream);
+        return;
     default:
-        throw std::invalid_argument("GDN Q5 split4 requires T in [2,9]");
+        throw std::invalid_argument("GDN Q5 split4 requires T in [2,10]");
     }
 }
 
@@ -235,24 +238,20 @@ void launch_q5(const Tensor& x, const Weight& weight, Tensor& value, Tensor& z,
         launch_q5_gemv(x, weight, value, z, stream);
         return;
     }
-    if (x.ne[1] <= 9) {
-        // T=7..9 move to the split4 shape, which the fused projections already use up to 6. The
-        // row-block shape was chosen for T=7/8 against the row-split SIMT; the split4 parent
-        // inherited from the fused band was not in that comparison, and it is faster at these three
-        // counts. Complete public op, both builds alternating inside one window, three rounds, cold
-        // L2, 5 warmup / 50 samples: Snapshot -21.5%/-17.4%/-11.2% and Record -21.1%/-17.9%/-10.0% at
-        // T=7/8/9, while T=4 and every count from 10 up is unchanged. One side at a time with the
-        // same protocol ranks the parents 52.5/60.6/70.9 us for split4 against 62.7/62.7/79.1 us for
-        // the row-block and 91.9/93.4/91.9 us for the row-split SIMT.
+    if (x.ne[1] <= 10) {
+        // One warp owns one output row and four warps split K; the column count is a compile-time
+        // template argument, so the kernel covers exactly the live columns. The fused projections
+        // below (T=2..6) use this shape too, so the Q5 parent has one mechanism from 2 to 10. The
+        // row-block shape measured here in the previous round is not used: it is slower than this
+        // shape at every admitted count, and slower than the c4 SIMT tile at 11 and 12 as well.
         launch_q5_split4_exact(x, weight, value, z, stream);
         return;
     }
     if (x.ne[1] <= 12) {
-        // T=10..12 keep the narrow-column SIMT tile, as before. The row-block shape was measured here
-        // too: it is 91.4 us at T=10 and 102.3 us at T=12 inside the complete op against 81.3 and
-        // 82.2 us for this tile, so the band does not extend past 9. A one-side probe ranks the two
-        // the other way round at these counts; the two complete-op benches and the kernel-level
-        // attribution all agree with the numbers above, so the probe's ranking is not used here.
+        // The c4 narrow-column SIMT tile, which stages the activation slab in shared memory and lets
+        // eight warps read it: above 10 columns its per-row reuse beats the split4 shape's one row
+        // per block. The band end is the measured crossover, not a shape limit; both shapes are legal
+        // at every count in [2,15].
         launch_q5_simt_cols<4>(x, weight, value, z, stream);
         return;
     }
