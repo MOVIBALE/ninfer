@@ -15,6 +15,14 @@
 // the repeated activation loads by kRowsPerBlock, and at T=7/8 this shape measured the fastest of
 // the candidates tried (62.7 us at T=8 against 93.4 us for the row-split SIMT).
 //
+// Structural note. The comparisons above were made against the warp-per-row kernel of the same
+// family, one side at a time. Measured as complete public calls, with both builds alternating inside
+// one window and the cold and warm caches reported separately, this shape loses to the split4 parent
+// that the fused bands already use: at B=1 W=7/8/9 the GDN complete op is 22.2%/17.4%/10.8% faster
+// with split4, and the attention one 19.0%/14.7%/5.5% faster, while the counts from 10 up prefer the
+// narrow-column SIMT tile this shape was never compared against. It therefore has no routed column
+// count today; it is kept because the mechanism is correct and its numbers are the record of why.
+//
 // Structure (deliberately the sibling kernel's, plus the staged slab):
 //   - one warp owns one output row; blockIdx.y selects a tile of kTt activation columns;
 //   - the weights of every row in the block are staged through shared memory with a cp.async
