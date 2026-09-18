@@ -235,16 +235,18 @@ void launch_q5(const Tensor& x, const Weight& weight, Tensor& gate, Tensor& valu
         return;
     }
     if (x.ne[1] <= 9) {
-        // One warp owns one output row and four warps split K, with the column count as a compile-time
-        // template argument, so the kernel covers exactly the live columns. The fused projections use
-        // the same shape up to 6, so the Q5 parent has one mechanism from 2 to 9.
+        // Split4: one CTA owns one output row, its four warps split the K dimension and reduce
+        // their partial sums through shared memory, with the column count as a compile-time
+        // template argument so the kernel covers exactly the live columns. The fused projections
+        // use the same shape up to 6, so the Q5 parent has one mechanism from 2 to 9.
         launch_q5_split4_exact(x, weight, gate, value, stream);
         return;
     }
     if (x.ne[1] <= 12) {
-        // The c4 narrow-column SIMT tile, which stages the activation slab in shared memory and lets
-        // eight warps read it. Above 9 columns it beats the split4 shape on this parent. The band end
-        // is the measured crossover, not a shape limit: both shapes are legal at 10..12.
+        // c4 SIMT: one output row per warp, up to four columns per column tile, with the quantized
+        // weight planes staged in shared memory and activations read from the input tensor.
+        // Retained in this interval on complete-Op measurements; both shapes are legal at every
+        // count in [2,12].
         launch_q5_simt<4>(x, weight, gate, value, stream);
         return;
     }

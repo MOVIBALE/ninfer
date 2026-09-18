@@ -239,19 +239,19 @@ void launch_q5(const Tensor& x, const Weight& weight, Tensor& value, Tensor& z,
         return;
     }
     if (x.ne[1] <= 10) {
-        // One warp owns one output row and four warps split K; the column count is a compile-time
-        // template argument, so the kernel covers exactly the live columns. The fused projections
-        // below (T=2..6) use this shape too, so the Q5 parent has one mechanism from 2 to 10. The
-        // row-block shape measured here in the previous round is not used: it is slower than this
-        // shape at every admitted count, and slower than the c4 SIMT tile at 11 and 12 as well.
+        // Split4: one CTA owns one output row, its four warps split the K dimension and reduce
+        // their partial sums through shared memory. The column count is a compile-time template
+        // argument, so the kernel covers exactly the live columns. The fused projections below
+        // (T=2..6) use the same shape, so the Q5 parent has one mechanism from 2 to 10; the band
+        // end is the measured crossover against the c4 tile at 11..12, not a shape limit.
         launch_q5_split4_exact(x, weight, value, z, stream);
         return;
     }
     if (x.ne[1] <= 12) {
-        // The c4 narrow-column SIMT tile, which stages the activation slab in shared memory and lets
-        // eight warps read it: above 10 columns its per-row reuse beats the split4 shape's one row
-        // per block. The band end is the measured crossover, not a shape limit; both shapes are legal
-        // at every count in [2,15].
+        // c4 SIMT: one output row per warp, up to four columns per column tile, with the quantized
+        // weight planes staged in shared memory and activations read from the input tensor.
+        // Retained in this interval on complete-Op measurements; both shapes are legal at every
+        // count in [2,15].
         launch_q5_simt_cols<4>(x, weight, value, z, stream);
         return;
     }
