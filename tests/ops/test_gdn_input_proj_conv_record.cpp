@@ -173,7 +173,9 @@ int run_case(std::string_view label, std::int32_t hidden, std::int32_t value_row
     launch();
     CUDA_CHECK(cudaStreamSynchronize(stream));
     auto activation_bits = bf16_bits(activation);
-    if (width == 2 || width == 9 || width == 16) {
+    if (width == 2 || width == 9 || width == 10 || width == 16) {
+        // 10 is the top of the Q5 parent's split4 band, 9 the count that used to be it, 2 the bottom and
+        // 16 the first grouped extent.
         cudaGraph_t graph;
         cudaGraphExec_t executable;
         CUDA_CHECK(cudaStreamBeginCapture(stream, cudaStreamCaptureModeGlobal));
